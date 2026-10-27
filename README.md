@@ -34,7 +34,8 @@ every push to `main` deploys.
 | `ANTHROPIC_API_KEY`     | strongly | Lets Claude read photos/PDFs and classify. From <https://platform.claude.com>.                 |
 | `CLAUDE_MODEL`          | no       | Defaults to `claude-opus-5-5`.                                                                |
 | `BLOB_READ_WRITE_TOKEN` | auto     | Set by the linked `expenses-receipts` Blob store.                                             |
-| `APP_PASSWORD`          | rec.     | Turns on HTTP Basic auth for the whole site (user `APP_USER`, default `admin`).               |
+| `APP_PASSWORD`          | rec.     | Turns on HTTP Basic auth for the whole site.                                                  |
+| `APP_USERS`             | no       | Comma-separated usernames that share `APP_PASSWORD` (e.g. `jlatsky,dbudning`). Default `admin`. |
 | `CRON_SECRET`           | rec.     | Lets the daily Vercel Cron call `/api/sync` when `APP_PASSWORD` is set.                        |
 | `IMAP_MAILBOX`          | no       | Folder to scan. Default `INBOX`; use `[Gmail]/All Mail` to include archived mail.             |
 | `MAIL_SINCE`            | no       | `YYYY-MM-DD`: on the very first scan, ignore mail older than this.                            |
