@@ -131,7 +131,7 @@ export default async function OverviewPage() {
         <br />
         Mailbox: {user} · folder {mailbox} · {mailConfigured() ? "connected" : "no password set"}
         <br />
-        Last scan: {db.lastSync ? `${fmtDate(db.lastSync.at)} — ${db.lastSync.scanned} scanned, ${db.lastSync.added} added, ${db.lastSync.ignored} skipped${db.lastSync.filed ? `, ${db.lastSync.filed} filed in Gmail` : ""}${db.lastSync.more ? ", more waiting" : ""}` : "never"} · runs daily at 11:00 UTC via Vercel Cron
+        Last scan: {db.lastSync ? `${fmtDate(db.lastSync.at)} — ${db.lastSync.scanned} scanned, ${db.lastSync.added} added, ${db.lastSync.ignored} skipped${db.lastSync.filed ? `, ${db.lastSync.filed} filed in Gmail` : ""}${db.lastSync.more ? ", more waiting" : ""}` : "never"} · automatic scan weekly, Mondays 11:00 UTC (Vercel Cron)
         <br />
         After processing, emails are labeled Expenses/Processed or Expenses/Skipped, marked read and archived.
         <br />
