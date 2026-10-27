@@ -33,7 +33,8 @@ export interface FetchResult {
 
 export function mailConfig() {
   const user = process.env.GOOGLE_EMAIL || "latskymd.receipts@gmail.com";
-  const pass = process.env.GOOGLE_PASSWORD || "";
+  // Google shows app passwords as "abcd efgh ijkl mnop"; the spaces are not part of the password.
+  const pass = (process.env.GOOGLE_PASSWORD || "").replace(/\s+/g, "");
   const mailbox = process.env.IMAP_MAILBOX || "INBOX";
   const host = process.env.IMAP_HOST || "imap.gmail.com";
   const port = Number(process.env.IMAP_PORT || 993);
@@ -55,6 +56,32 @@ function makeClient() {
     logger: false,
     emitLogs: false,
   });
+}
+
+/** Turn imapflow's terse "Command failed" into something a person can act on. */
+function describeImapError(err: unknown): Error {
+  const e = err as Error & { responseText?: string; response?: string; authenticationFailed?: boolean; serverResponseCode?: string; code?: string };
+  const { user, host } = mailConfig();
+  const detail = e.responseText || e.response || e.serverResponseCode || e.code || "";
+  if (e.authenticationFailed || /AUTHENTICATIONFAILED|Invalid credentials|Application-specific password/i.test(detail)) {
+    return new Error(
+      `Gmail refused the sign-in for ${user} (${detail || "invalid credentials"}). Check that GOOGLE_PASSWORD is a current 16-character Gmail app password for this exact account, that 2-Step Verification is on, and that IMAP is enabled in Gmail settings.`,
+    );
+  }
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET/i.test(detail || e.message)) {
+    return new Error(`Could not reach ${host}: ${detail || e.message}`);
+  }
+  return new Error(`IMAP error: ${e.message}${detail ? ` (${detail})` : ""}`);
+}
+
+async function connect(): Promise<ImapFlow> {
+  const client = makeClient();
+  try {
+    await client.connect();
+  } catch (err) {
+    throw describeImapError(err);
+  }
+  return client;
 }
 
 function addressOf(a: AddressObject | AddressObject[] | undefined): { address: string; name: string } {
@@ -91,10 +118,11 @@ export function toMailMessage(uid: number, parsed: ParsedMail, fallbackDate: Dat
  */
 export async function fetchNewMessages(opts: { afterUid: number; limit: number }): Promise<FetchResult> {
   const { mailbox } = mailConfig();
-  const client = makeClient();
-  await client.connect();
+  const client = await connect();
   try {
-    const lock = await client.getMailboxLock(mailbox);
+    const lock = await client.getMailboxLock(mailbox).catch((err) => {
+      throw new Error(`Could not open mailbox folder "${mailbox}": ${(err as Error).message}`);
+    });
     try {
       const box = client.mailbox;
       const uidValidity = typeof box === "object" && box ? Number(box.uidValidity ?? 0) : 0;
@@ -134,8 +162,7 @@ export async function fetchNewMessages(opts: { afterUid: number; limit: number }
 /** Fetch one message by UID (used to re-run extraction or re-fetch originals). */
 export async function fetchMessageByUid(uid: number): Promise<MailMessage | null> {
   const { mailbox } = mailConfig();
-  const client = makeClient();
-  await client.connect();
+  const client = await connect();
   try {
     const lock = await client.getMailboxLock(mailbox);
     try {
