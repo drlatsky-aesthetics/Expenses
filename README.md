@@ -5,7 +5,7 @@ every push to `main` deploys.
 
 ## What it does
 
-- **Scans the receipts mailbox** (`latskymd.receipts@gmail.com`) over IMAP, weekly via
+- **Scans the receipts mailbox** (`latskymd.receipts@gmail.com`) over IMAP, daily via
   Vercel Cron and on demand with the **Scan inbox** button. Each new email becomes a record;
   obvious non-receipts (account notices, newsletters) are filed under *Not receipts*.
 - **Reads the receipt** — PDF attachments, photos, inline HTML or plain text — with Claude and
@@ -59,8 +59,8 @@ Safari remembers the Basic-auth login, so the home-screen app opens straight in.
   per run (each receipt takes a few seconds to read). If more are waiting the Overview says so —
   press **Scan inbox** again.
 - Records are de-duplicated by `Message-ID`, so re-scans never create duplicates.
-- Vercel Cron hits `GET /api/sync` weekly, Mondays at 11:00 UTC (`vercel.json`). Change the
-  cron expression there to adjust; the Scan inbox button works any time.
+- Vercel Cron hits `GET /api/sync` daily at 11:00 UTC (`vercel.json`). A scan with no new mail
+  is a one-second IMAP check and never calls Claude; Claude runs once per new receipt only.
 - After a message is processed it is labeled `Expenses/Processed` (or `Expenses/Skipped` for
   non-receipts), marked read, and archived out of the inbox. Nothing is deleted. Set
   `MAIL_ARCHIVE=false` to keep processed mail in the inbox; `MAIL_LABEL_PROCESSED` /
