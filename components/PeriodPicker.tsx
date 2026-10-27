@@ -14,7 +14,7 @@ const PRESETS: [string, string][] = [
   ["custom", "Custom range"],
 ];
 
-export default function PeriodPicker({ categories }: { categories?: string[] }) {
+export default function PeriodPicker({ categories, tags }: { categories?: string[]; tags?: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -23,6 +23,7 @@ export default function PeriodPicker({ categories }: { categories?: string[] }) 
   const [from, setFrom] = useState(params.get("from") ?? "");
   const [to, setTo] = useState(params.get("to") ?? "");
   const category = params.get("category") ?? "";
+  const tag = params.get("tag") ?? "";
 
   function apply(next: Record<string, string>) {
     const q = new URLSearchParams(params.toString());
@@ -72,6 +73,19 @@ export default function PeriodPicker({ categories }: { categories?: string[] }) 
             {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      {tags && tags.length > 0 && (
+        <>
+          <span className="label">Tag</span>
+          <select className="select" style={{ width: "auto" }} value={tag} onChange={(e) => apply({ tag: e.target.value })}>
+            <option value="">All</option>
+            {tags.map((t) => (
+              <option key={t} value={t}>
+                #{t}
               </option>
             ))}
           </select>

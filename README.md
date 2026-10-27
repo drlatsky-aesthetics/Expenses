@@ -26,6 +26,12 @@ every push to `main` deploys.
   charge is matched to a receipt by amount, date and vendor; the CAD amount the card actually
   charged is recorded on the receipt for reference. Charges without a receipt and receipts without
   a charge are flagged, and you can link, unlink or mark a line "not an expense" by hand.
+- **Custom categories and tags** (Categories tab): add your own expense categories (they are
+  offered to the AI classifier and every dropdown) and put free-form tags on receipts for trips,
+  events or projects; filter reports by either.
+- **Overview preview**: the Overview shows the statement for any period (tiles, by category,
+  sales tax, by month, by tag, receipt detail) without opening Reports; Reports adds vendors,
+  category/tag filters and the exports.
 - **Reports**: period picker (month, quarter, year, custom), totals, by category, by vendor, by
   month, sales-tax summary for input tax credits, and exports — **Statement PDF** (summary +
   receipt detail), **Summary PDF**, and **CSV** for the accountant.

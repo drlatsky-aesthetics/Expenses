@@ -49,7 +49,7 @@ function excerptOf(msg: MailMessage): string {
   return t.slice(0, 400);
 }
 
-export async function receiptFromMessage(msg: MailMessage, mailbox: string, uidValidity: number, existingId?: string): Promise<Receipt> {
+export async function receiptFromMessage(msg: MailMessage, mailbox: string, uidValidity: number, existingId?: string, customCategories: Db["customCategories"] = []): Promise<Receipt> {
   const id = existingId ?? receiptIdForMessage(msg.messageId, uidValidity, msg.uid);
   const keep = msg.attachments.filter(keepAttachment).map((a) => ({ name: a.filename, contentType: a.contentType, content: a.content }));
   const files = await storeFiles(id, keep);
@@ -63,6 +63,7 @@ export async function receiptFromMessage(msg: MailMessage, mailbox: string, uidV
     text: msg.text,
     html: msg.html,
     files: keep,
+    customCategories,
   });
   const now = new Date().toISOString();
   return {
@@ -126,7 +127,7 @@ export async function syncMailbox(opts: SyncOptions = {}): Promise<SyncInfo> {
         outcomes.push({ uid: msg.uid, outcome: dup.status === "ignored" ? "skipped" : "processed" });
         continue;
       }
-      const receipt = await receiptFromMessage(msg, mailbox, fetched.uidValidity);
+      const receipt = await receiptFromMessage(msg, mailbox, fetched.uidValidity, undefined, db.customCategories);
       if (db.receipts[receipt.id]) continue;
       await ensureFx(db, receipt);
       db.receipts[receipt.id] = receipt;

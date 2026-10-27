@@ -1,8 +1,8 @@
 import ReceiptsTable, { type ReceiptRowView } from "@/components/ReceiptsTable";
-import { CATEGORY_NAMES } from "@/lib/categories";
+import { categoryNames } from "@/lib/categories";
 import { loadDb, saveDb } from "@/lib/store";
 import { backfillFx } from "@/lib/fx";
-import { effectiveFields, needsReview, reportDate } from "@/lib/types";
+import { allTags, effectiveFields, needsReview, reportDate } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +20,11 @@ export default async function ReceiptsPage() {
         description: f.description ?? "",
         total: f.total,
         totalCad: f.totalCad,
+        fxRate: f.fxRate,
+        fxSource: f.fxSource,
         tax: f.tax,
         currency: f.currency,
+        tags: f.tags ?? [],
         status: r.status,
         needsReview: needsReview(r),
         source: r.source,
@@ -34,7 +37,7 @@ export default async function ReceiptsPage() {
 
   return (
     <div>
-      <ReceiptsTable rows={rows} categories={CATEGORY_NAMES} />
+      <ReceiptsTable rows={rows} categories={categoryNames(db.customCategories)} tags={allTags(db)} />
     </div>
   );
 }

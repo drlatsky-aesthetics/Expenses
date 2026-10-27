@@ -25,6 +25,7 @@ export interface ReportRow {
   fxRate: number | null;
   fxSource: string | null;
   chargedCad: number | null;
+  tags: string[];
   /** True when a foreign receipt still has no rate: it is excluded from CAD totals. */
   unconverted: boolean;
   paymentMethod: string;
@@ -44,6 +45,12 @@ export interface CategoryTotal {
 
 export interface VendorTotal {
   vendor: string;
+  count: number;
+  total: number;
+}
+
+export interface TagTotal {
+  tag: string;
   count: number;
   total: number;
 }
@@ -76,6 +83,7 @@ export interface Summary {
   byCategory: CategoryTotal[];
   byVendor: VendorTotal[];
   byMonth: MonthTotal[];
+  byTag: TagTotal[];
   taxes: TaxSummary;
   currencies: string[];
   /** Foreign receipts that have no CAD figure yet (not included in totals). */
@@ -115,6 +123,7 @@ export function toRow(r: Receipt): ReportRow {
     fxRate: f.fxRate,
     fxSource: f.fxSource,
     chargedCad: f.chargedCad,
+    tags: f.tags ?? [],
     unconverted,
     paymentMethod: f.paymentMethod ?? "",
     invoiceNumber: f.invoiceNumber ?? "",
@@ -124,16 +133,18 @@ export function toRow(r: Receipt): ReportRow {
   };
 }
 
-export function summarize(all: Receipt[], period: Period, category?: string): Summary {
+export function summarize(all: Receipt[], period: Period, category?: string, tag?: string): Summary {
   const rows = expenseReceipts(all)
     .map(toRow)
     .filter((row) => inPeriod(row.date, period))
     .filter((row) => !category || row.category === category)
+    .filter((row) => !tag || row.tags.includes(tag))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
   const cat = new Map<string, CategoryTotal>();
   const ven = new Map<string, VendorTotal>();
   const mon = new Map<string, MonthTotal>();
+  const tagMap = new Map<string, TagTotal>();
   const taxes: TaxSummary = { gst: 0, hst: 0, pst: 0, qst: 0, other: 0, total: 0, untaxedCount: 0 };
   let total = 0;
   let subtotal = 0;
@@ -177,6 +188,13 @@ export function summarize(all: Receipt[], period: Period, category?: string): Su
     m.total += row.total;
     mon.set(ym, m);
 
+    for (const t of row.tags) {
+      const tt = tagMap.get(t) ?? { tag: t, count: 0, total: 0 };
+      tt.count++;
+      tt.total += row.total;
+      tagMap.set(t, tt);
+    }
+
     taxes.gst += row.gst ?? 0;
     taxes.hst += row.hst ?? 0;
     taxes.pst += row.pst ?? 0;
@@ -203,6 +221,7 @@ export function summarize(all: Receipt[], period: Period, category?: string): Su
     byCategory: [...cat.values()].map((c) => ({ ...c, subtotal: round2(c.subtotal), tax: round2(c.tax), total: round2(c.total) })).sort((a, b) => b.total - a.total),
     byVendor: [...ven.values()].map(r2).sort((a, b) => b.total - a.total),
     byMonth: [...mon.values()].map(r2).sort((a, b) => (a.month < b.month ? -1 : 1)),
+    byTag: [...tagMap.values()].map(r2).sort((a, b) => b.total - a.total),
     taxes,
     currencies: [...currencies],
     unconvertedCount,
@@ -220,13 +239,13 @@ function csvCell(v: string | number | null, decimals = 2): string {
 
 export function detailCsv(summary: Summary): string {
   const header = [
-    "Date", "Vendor", "Category", "Description", "Business purpose", "Subtotal (CAD)", "GST", "HST", "PST", "QST", "Other tax (CAD)", "Total tax (CAD)", "Tip (CAD)", "Total (CAD)", "Original currency", "Original total", "FX rate (Bank of Canada)", "FX source", "Card charged (CAD)", "Payment method", "Invoice #", "Source", "Status", "Note", "Receipt ID",
+    "Date", "Vendor", "Category", "Tags", "Description", "Business purpose", "Currency on receipt", "Total as on receipt", "Rate applied (CAD per unit)", "Rate source", "Total (CAD)", "Subtotal (CAD)", "GST", "HST", "PST", "QST", "Other tax (CAD)", "Total tax (CAD)", "Tip (CAD)", "Card charged (CAD)", "Payment method", "Invoice #", "Source", "Status", "Note", "Receipt ID",
   ];
   const lines = [header.join(",")];
   for (const r of summary.rows) {
     lines.push(
       [
-        r.date, r.vendor, r.category, r.description, r.purpose, r.subtotal, r.gst, r.hst, r.pst, r.qst, r.otherTax, r.tax, r.tip, r.unconverted ? null : r.total, r.currency, r.totalOriginal, csvCell(r.fxRate, 4), r.fxSource ?? "", r.chargedCad, r.paymentMethod, r.invoiceNumber, r.source, r.status, r.note, r.id,
+        r.date, r.vendor, r.category, r.tags.join(" "), r.description, r.purpose, r.currency, r.totalOriginal, csvCell(r.fxRate, 4), r.currency === "CAD" ? "" : r.fxSource === "manual" ? "manual" : "Bank of Canada", r.unconverted ? null : r.total, r.subtotal, r.gst, r.hst, r.pst, r.qst, r.otherTax, r.tax, r.tip, r.chargedCad, r.paymentMethod, r.invoiceNumber, r.source, r.status, r.note, r.id,
       ]
         .map((v) => csvCell(v))
         .join(","),
@@ -453,25 +472,52 @@ export async function statementPdf(summary: Summary, opts: { practice: string; i
   if (opts.includeDetail) {
     w.newPage();
     w.text("Receipt detail", { size: 11, bold: true, color: GOLD, gap: 6 });
+    w.text("Amounts: 'As on receipt' is the figure in the receipt's own currency; 'Rate' is the Bank of Canada daily rate applied (blank for CAD); 'Total CAD' is what the report counts.", { size: 7.5, color: MUTED, gap: 8 });
     w.table(
       [
-        { key: "date", label: "Date", width: 62 },
-        { key: "vendor", label: "Vendor", width: 118 },
-        { key: "category", label: "Category", width: 112 },
-        { key: "description", label: "Description", width: 112 },
-        { key: "tax", label: "Tax", width: 58, align: "right" },
-        { key: "total", label: "Total", width: 70, align: "right" },
+        { key: "date", label: "Date", width: 56 },
+        { key: "vendor", label: "Vendor", width: 104 },
+        { key: "category", label: "Category", width: 98 },
+        { key: "original", label: "As on receipt", width: 84, align: "right" },
+        { key: "rate", label: "Rate", width: 46, align: "right" },
+        { key: "tax", label: "Tax CAD", width: 64, align: "right" },
+        { key: "total", label: "Total CAD", width: 80, align: "right" },
       ],
       summary.rows.map((r) => ({
         date: r.date,
         vendor: r.vendor || "(unknown)",
         category: r.category,
-        description: r.currency !== "CAD" ? `${r.description || r.purpose} (${r.currency} ${r.totalOriginal.toFixed(2)})` : r.description || r.purpose,
+        original: `${r.currency} ${r.totalOriginal.toFixed(2)}`,
+        rate: r.currency === "CAD" ? "" : r.fxRate ? r.fxRate.toFixed(4) : "none",
         tax: money(r.tax, cur),
         total: r.unconverted ? "unconverted" : money(r.total, cur),
       })),
       { zebra: true, size: 8, totalRow: { date: "Total", vendor: `${summary.count} receipts`, tax: money(summary.tax, cur), total: money(summary.total, cur) } },
     );
+    if (summary.foreignCount > 0) {
+      w.text("Foreign-currency receipts", { size: 11, bold: true, color: GOLD, gap: 6 });
+      w.table(
+        [
+          { key: "date", label: "Date", width: 60 },
+          { key: "vendor", label: "Vendor", width: 150 },
+          { key: "original", label: "As on receipt", width: 96, align: "right" },
+          { key: "rate", label: "BoC rate", width: 66, align: "right" },
+          { key: "total", label: "Total CAD", width: 80, align: "right" },
+          { key: "charged", label: "Card charged", width: 80, align: "right" },
+        ],
+        summary.rows
+          .filter((r) => r.currency !== "CAD")
+          .map((r) => ({
+            date: r.date,
+            vendor: r.vendor || "(unknown)",
+            original: `${r.currency} ${r.totalOriginal.toFixed(2)}`,
+            rate: r.fxRate ? r.fxRate.toFixed(4) : "none",
+            total: r.unconverted ? "unconverted" : money(r.total, cur),
+            charged: r.chargedCad !== null ? money(r.chargedCad, cur) : "",
+          })),
+        { zebra: true, size: 8 },
+      );
+    }
   }
 
   return w.doc.save();

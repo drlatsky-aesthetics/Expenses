@@ -640,11 +640,17 @@ details > summary::-webkit-details-marker {
   .tabs {
     margin-bottom: 16px;
   }
+  .tabs {
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
   .tab {
-    padding: 10px 8px;
-    flex: 1;
-    text-align: center;
-    letter-spacing: 0.14em;
+    padding: 10px 10px;
+    flex: 0 0 auto;
+    letter-spacing: 0.12em;
+    font-size: 10.5px;
   }
   /* 16px stops iOS Safari zooming into focused fields. */
   .input,
@@ -719,6 +725,8 @@ details > summary::-webkit-details-marker {
     white-space: normal;
     line-height: 1.5;
     text-align: left;
+    overflow-wrap: normal;
+    word-break: keep-all;
   }
   .preview iframe {
     display: none;

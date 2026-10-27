@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CATEGORY_NAMES } from "@/lib/categories";
+import { UNCATEGORIZED, categoryNames } from "@/lib/categories";
 import { periodFromQuery } from "@/lib/money";
 import { detailCsv, statementPdf, summarize } from "@/lib/reports";
 import { loadDb } from "@/lib/store";
@@ -15,11 +15,12 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
   const format = q.get("format") === "pdf" ? "pdf" : "csv";
   const period = periodFromQuery({ preset: q.get("preset") ?? undefined, from: q.get("from") ?? undefined, to: q.get("to") ?? undefined });
-  const cat = q.get("category") ?? undefined;
-  const category = cat && CATEGORY_NAMES.concat("Uncategorized").includes(cat) ? cat : undefined;
   const db = await loadDb();
-  const summary = summarize(Object.values(db.receipts), period, category);
-  const stem = `expenses-${period.from}-to-${period.to}${category ? `-${category.replace(/[^a-z0-9]+/gi, "_")}` : ""}`;
+  const cat = q.get("category") ?? undefined;
+  const category = cat && categoryNames(db.customCategories).concat(UNCATEGORIZED).includes(cat) ? cat : undefined;
+  const tag = q.get("tag") || undefined;
+  const summary = summarize(Object.values(db.receipts), period, category, tag);
+  const stem = `expenses-${period.from}-to-${period.to}${category ? `-${category.replace(/[^a-z0-9]+/gi, "_")}` : ""}${tag ? `-${tag}` : ""}`;
 
   if (format === "csv") {
     return new NextResponse(detailCsv(summary), {

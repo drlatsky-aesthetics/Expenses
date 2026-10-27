@@ -14,9 +14,45 @@ function numInput(v: string): Num {
   return Number.isFinite(n) ? n : null;
 }
 
-export default function ReceiptEditor({ receipt, fields, categories, canReextract }: { receipt: Receipt; fields: ReceiptFields; categories: string[]; canReextract: boolean }) {
+export default function ReceiptEditor({ receipt, fields, categories, knownTags, canReextract }: { receipt: Receipt; fields: ReceiptFields; categories: string[]; knownTags: string[]; canReextract: boolean }) {
   const router = useRouter();
-  const [f, setF] = useState<ReceiptFields>(fields);
+  const [f, setF] = useState<ReceiptFields>({ ...fields, tags: fields.tags ?? [] });
+  const [cats, setCats] = useState<string[]>(categories);
+  const [newCat, setNewCat] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState("");
+
+  async function addCategory() {
+    const name = (newCat ?? "").trim();
+    if (!name) return;
+    setBusy("category");
+    try {
+      const res = await fetch("/api/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? res.statusText);
+      setCats((c) => [...c, data.name]);
+      set("category", data.name);
+      setNewCat(null);
+      setMsg(`Category "${data.name}" added.`);
+    } catch (err) {
+      setMsg(`Could not add category: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function addTag(raw: string) {
+    const t = raw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\u00C0-\u024F\s_-]+/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40);
+    if (!t) return;
+    setF((p) => (p.tags.includes(t) ? p : { ...p, tags: [...p.tags, t] }));
+    setTagInput("");
+  }
   const [note, setNote] = useState(receipt.note ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -97,15 +133,35 @@ export default function ReceiptEditor({ receipt, fields, categories, canReextrac
         </div>
         <div className="field">
           <span className="label">Category</span>
-          <select className="select" value={f.category} onChange={(e) => set("category", e.target.value)}>
-            {!categories.includes(f.category) && <option value={f.category}>{f.category}</option>}
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-            <option value="Uncategorized">Uncategorized</option>
-          </select>
+          {newCat === null ? (
+            <select
+              className="select"
+              value={f.category}
+              onChange={(e) => {
+                if (e.target.value === "__new__") setNewCat("");
+                else set("category", e.target.value);
+              }}
+            >
+              {!cats.includes(f.category) && f.category !== "Uncategorized" && <option value={f.category}>{f.category}</option>}
+              {cats.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+              <option value="Uncategorized">Uncategorized</option>
+              <option value="__new__">+ New category…</option>
+            </select>
+          ) : (
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <input className="input" autoFocus placeholder="New category name" value={newCat} onChange={(e) => setNewCat(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCategory()} />
+              <button className="btn sm" disabled={busy !== null} onClick={addCategory}>
+                Add
+              </button>
+              <button className="btn quiet sm" onClick={() => setNewCat(null)}>
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
         <div className="field">
           <span className="label">Payment method</span>
@@ -121,6 +177,37 @@ export default function ReceiptEditor({ receipt, fields, categories, canReextrac
         <div className="field">
           <span className="label">Business purpose</span>
           <input className="input" value={f.purpose ?? ""} onChange={(e) => set("purpose", e.target.value || null)} placeholder="Why the practice paid for this" />
+        </div>
+      </div>
+
+      <div className="field" style={{ marginTop: 14 }}>
+        <span className="label">Tags</span>
+        <div className="row" style={{ gap: 6 }}>
+          {f.tags.map((t) => (
+            <span key={t} className="pill blue" style={{ cursor: "pointer" }} title="Remove" onClick={() => setF((p) => ({ ...p, tags: p.tags.filter((x) => x !== t) }))}>
+              #{t} ×
+            </span>
+          ))}
+          <input
+            className="input"
+            style={{ width: 220 }}
+            list="known-tags"
+            placeholder="Add a tag and press Enter"
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                addTag(tagInput);
+              }
+            }}
+            onBlur={() => tagInput && addTag(tagInput)}
+          />
+          <datalist id="known-tags">
+            {knownTags.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
         </div>
       </div>
 

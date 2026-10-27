@@ -3,7 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { convert as htmlToText } from "html-to-text";
 import { extractText as pdfExtractText } from "unpdf";
-import { ALL_CATEGORY_NAMES, CATEGORY_NAMES, UNCATEGORIZED, categoryPromptList, guessCategory, isKnownCategory } from "./categories";
+import { CATEGORY_NAMES, UNCATEGORIZED, categoryNames, categoryPromptList, guessCategory, isKnownCategory, type CategoryLike } from "./categories";
 import { ExtractionInfo, ReceiptFields, emptyFields } from "./types";
 import { round2 } from "./money";
 import { PRACTICE_NAME } from "./brand";
@@ -18,6 +18,8 @@ export interface ExtractInput {
   text?: string;
   html?: string | null;
   files: { name: string; contentType: string; content: Buffer }[];
+  /** Custom categories added in the app; offered to the classifier alongside the built-ins. */
+  customCategories?: CategoryLike[];
 }
 
 export interface ExtractOutput {
@@ -84,7 +86,8 @@ export function looksLikeReceipt(input: ExtractInput, text: string): boolean {
 
 const NullableNumber = z.number().nullable();
 
-const ReceiptSchema = z.object({
+function receiptSchema(categories: string[]) {
+  return z.object({
   is_receipt: z
     .boolean()
     .describe("True only if this is a receipt, invoice, order confirmation, bill or other proof of a purchase/payment. False for account notices, marketing, shipping-only updates, password resets, etc."),
@@ -100,7 +103,7 @@ const ReceiptSchema = z.object({
   other_tax: NullableNumber.describe("Any other tax (e.g. US sales tax, VAT) if shown."),
   tip: NullableNumber.describe("Tip/gratuity if shown."),
   currency: z.string().describe("ISO 4217 currency code, e.g. CAD or USD."),
-  category: z.enum(ALL_CATEGORY_NAMES as [string, ...string[]]).describe("Best-fit expense category from the list."),
+  category: z.enum([UNCATEGORIZED, ...categories] as [string, ...string[]]).describe("Best-fit expense category from the list."),
   description: z.string().nullable().describe("One line describing what was purchased."),
   purpose: z.string().nullable().describe("Likely business purpose/reason for the expense in the context of running a medical aesthetics clinic, one short sentence. Null if unclear."),
   payment_method: z.string().nullable().describe("e.g. 'Visa ending 1234', 'PayPal', 'e-Transfer'. Null if unknown."),
@@ -116,9 +119,11 @@ const ReceiptSchema = z.object({
     .describe("Up to 25 line items. Empty if none are itemized."),
   confidence: z.number().describe("0 to 1: how confident you are that vendor, date, total and category are correct."),
   notes: z.string().nullable().describe("Anything the bookkeeper should know: unreadable amounts, partial payments, refunds, multiple receipts in one document, etc."),
-});
+  });
+}
+type ReceiptSchemaType = ReturnType<typeof receiptSchema>;
 
-function systemPrompt(): string {
+function systemPrompt(custom: CategoryLike[]): string {
   const practice = `${PRACTICE_NAME} (a physician's professional corporation in Ontario, Canada, covering a medical aesthetics clinic and the physician's other medical work such as residency teaching, conferences and memberships)`;
   return `You are a meticulous bookkeeper for ${practice}. You read receipts, invoices and order confirmations that were emailed to a dedicated receipts inbox or uploaded directly, and you extract the facts needed for the practice's accounting records.
 
@@ -131,7 +136,7 @@ Rules:
 - Dates must be YYYY-MM-DD. Prefer the purchase/invoice date on the document over the email date.
 - If the item is not a receipt or proof of purchase (security alert, newsletter, shipping notice without amounts, promotional email), set is_receipt=false and leave amounts null.
 - Pick exactly one category from this list, or "${UNCATEGORIZED}" when none fits confidently:
-${categoryPromptList()}
+${categoryPromptList(custom)}
 - Receipts are often forwarded or photographed by the physician: when the email is a forward ("Fwd:", "Begin forwarded message"), the vendor is the ORIGINAL sender/merchant named inside the forwarded text or document, never the person forwarding it.
 - The email subject and any short note in the body are written by the physician and usually state the occasion (e.g. "Erie residency - dinner", "Conference parking"). Use them as the primary hint for purpose and category.
 - purpose: infer the plausible business reason (e.g. "Neuromodulator stock for injectable treatments", "Monthly booking software subscription", "Dinner during Erie residency teaching trip") - keep it short and professional. Null if you cannot tell.`;
@@ -208,7 +213,7 @@ async function buildUserContent(input: ExtractInput, text: string): Promise<{ co
   return { content, attached };
 }
 
-function toFields(p: z.infer<typeof ReceiptSchema>): ReceiptFields {
+function toFields(p: z.infer<ReceiptSchemaType>, custom: CategoryLike[]): ReceiptFields {
   const currency = (p.currency || defaultCurrency()).toUpperCase().slice(0, 3);
   const num = (n: number | null) => (n === null || Number.isNaN(n) ? null : round2(n));
   const taxParts = [p.gst, p.hst, p.pst, p.qst, p.other_tax].filter((x): x is number => typeof x === "number");
@@ -222,7 +227,7 @@ function toFields(p: z.infer<typeof ReceiptSchema>): ReceiptFields {
     taxBreakdown: { gst: num(p.gst), hst: num(p.hst), pst: num(p.pst), qst: num(p.qst), other: num(p.other_tax) },
     tip: num(p.tip),
     currency,
-    category: isKnownCategory(p.category) ? p.category : UNCATEGORIZED,
+    category: isKnownCategory(p.category, custom) ? p.category : UNCATEGORIZED,
     description: p.description?.trim() || null,
     purpose: p.purpose?.trim() || null,
     paymentMethod: p.payment_method?.trim() || null,
@@ -236,12 +241,14 @@ function toFields(p: z.infer<typeof ReceiptSchema>): ReceiptFields {
     fxSource: null,
     totalCad: null,
     chargedCad: null,
+    tags: [],
   };
 }
 
 async function extractWithClaude(input: ExtractInput, text: string): Promise<ExtractOutput> {
   const client = new Anthropic();
   const model = claudeModel();
+  const custom = input.customCategories ?? [];
   const { content, attached } = await buildUserContent(input, text);
   if (attached.length === 0 && input.files.length > 0 && !text.trim()) {
     throw new Error("No readable attachment (unsupported image format or file too large)");
@@ -250,9 +257,9 @@ async function extractWithClaude(input: ExtractInput, text: string): Promise<Ext
   const response = await client.messages.parse({
     model,
     max_tokens: 4096,
-    system: systemPrompt(),
+    system: systemPrompt(custom),
     messages: [{ role: "user", content }],
-    output_config: { format: zodOutputFormat(ReceiptSchema) },
+    output_config: { format: zodOutputFormat(receiptSchema(categoryNames(custom))) },
   });
 
   if (response.stop_reason === "refusal") {
@@ -261,7 +268,7 @@ async function extractWithClaude(input: ExtractInput, text: string): Promise<Ext
   const parsed = response.parsed_output;
   if (!parsed) throw new Error("Claude returned no structured output");
 
-  const fields = toFields(parsed);
+  const fields = toFields(parsed, custom);
   return {
     fields,
     info: {

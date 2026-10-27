@@ -190,9 +190,9 @@ export default function StatementsView({ statements, unmatchedReceipts }: { stat
                             <td className="col-date">{t.date}</td>
                             <td>
                               {t.description}
-                              {t.foreignAmount !== null && (
+                              {t.foreignAmount !== null && t.foreignAmount > 0 && (
                                 <div className="small faint">
-                                  {t.foreignCurrency} {t.foreignAmount.toFixed(2)}
+                                  {t.foreignCurrency} {t.foreignAmount.toFixed(2)} as charged · card rate {(t.amount / t.foreignAmount).toFixed(4)}
                                 </div>
                               )}
                               <div className="show-sm" style={{ marginTop: 6 }}>

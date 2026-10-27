@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isKnownCategory } from "@/lib/categories";
 import { loadDb, saveDb } from "@/lib/store";
-import { ReceiptFields, ReceiptStatus, effectiveFields } from "@/lib/types";
+import { ReceiptFields, ReceiptStatus, effectiveFields, normalizeTag } from "@/lib/types";
 import { ensureFx } from "@/lib/fx";
 
 export const runtime = "nodejs";
@@ -30,6 +30,7 @@ const FieldsPatch = z
     fxSource: z.enum(["boc", "manual"]).nullable(),
     totalCad: Num,
     chargedCad: Num,
+    tags: z.array(z.string().max(60)).max(20),
   })
   .partial();
 
@@ -64,7 +65,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const overrides: Partial<ReceiptFields> = { ...r.overrides };
     for (const [k, v] of Object.entries(fields) as [keyof ReceiptFields, ReceiptFields[keyof ReceiptFields]][]) {
       if (v === undefined) continue;
-      if (k === "category" && typeof v === "string" && !isKnownCategory(v)) continue;
+      if (k === "category" && typeof v === "string" && !isKnownCategory(v, db.customCategories)) continue;
+      if (k === "tags" && Array.isArray(v)) {
+        const cleaned = [...new Set((v as string[]).map(normalizeTag).filter(Boolean))];
+        const same = JSON.stringify(cleaned) === JSON.stringify(r.extracted.tags ?? []);
+        if (same) delete overrides.tags;
+        else overrides.tags = cleaned;
+        continue;
+      }
       const same = JSON.stringify(v) === JSON.stringify(r.extracted[k]);
       if (same) delete overrides[k];
       else (overrides as Record<string, unknown>)[k] = v;

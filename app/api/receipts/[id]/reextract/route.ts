@@ -44,9 +44,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     text,
     html,
     files,
+    customCategories: db.customCategories,
   });
 
-  r.extracted = result.fields;
+  r.extracted = { ...result.fields, tags: r.extracted.tags ?? [] };
   r.extraction = result.info;
   await ensureFx(db, r);
   if (r.status === "auto" || r.status === "ignored") r.status = result.info.isReceipt ? "auto" : "ignored";

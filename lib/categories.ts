@@ -124,8 +124,29 @@ export const CATEGORY_NAMES = CATEGORIES.map((c) => c.name);
 export const UNCATEGORIZED = "Uncategorized";
 export const ALL_CATEGORY_NAMES = [...CATEGORY_NAMES, UNCATEGORIZED];
 
-export function isKnownCategory(name: string): boolean {
-  return ALL_CATEGORY_NAMES.includes(name);
+export interface CategoryLike {
+  name: string;
+  description: string;
+  line: string;
+}
+
+/** Built-in categories followed by the practice's custom ones. */
+export function categoryList(custom: CategoryLike[] = []): CategoryLike[] {
+  const names = new Set(CATEGORY_NAMES);
+  const extra = custom.filter((c) => c.name && !names.has(c.name));
+  return [...CATEGORIES.map(({ name, description, line }) => ({ name, description, line })), ...extra];
+}
+
+export function categoryNames(custom: CategoryLike[] = []): string[] {
+  return categoryList(custom).map((c) => c.name);
+}
+
+export function isKnownCategory(name: string, custom: CategoryLike[] = []): boolean {
+  return name === UNCATEGORIZED || categoryNames(custom).includes(name);
+}
+
+export function categoryLine(name: string, custom: CategoryLike[] = []): string {
+  return categoryList(custom).find((c) => c.name === name)?.line ?? "";
 }
 
 /** Cheap keyword-based category guess used when Claude is unavailable. */
@@ -140,6 +161,8 @@ export function guessCategory(text: string): string {
   return best.name;
 }
 
-export function categoryPromptList(): string {
-  return CATEGORIES.map((c) => `- ${c.name}: ${c.description}`).join("\n");
+export function categoryPromptList(custom: CategoryLike[] = []): string {
+  return categoryList(custom)
+    .map((c) => `- ${c.name}${c.description ? `: ${c.description}` : ""}`)
+    .join("\n");
 }

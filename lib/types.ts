@@ -57,6 +57,16 @@ export interface ReceiptFields {
   totalCad: number | null;
   /** What the card statement shows was charged in CAD, when matched (reference only). */
   chargedCad: number | null;
+  /** Free-form tags (e.g. "erie-residency", "conference-2026"). */
+  tags: string[];
+}
+
+export interface CustomCategory {
+  name: string;
+  description: string;
+  /** CRA T2125 line hint, optional. */
+  line: string;
+  createdAt: string;
 }
 
 export interface StatementTransaction {
@@ -147,6 +157,8 @@ export interface Db {
   statements: Record<string, Statement>;
   /** Bank of Canada rate cache, key "USD:2026-10-20" -> CAD per unit. */
   fxCache: Record<string, number>;
+  /** Categories added from the app, on top of the built-in list. */
+  customCategories: CustomCategory[];
 }
 
 export function emptyFields(currency = "CAD"): ReceiptFields {
@@ -169,11 +181,30 @@ export function emptyFields(currency = "CAD"): ReceiptFields {
     fxSource: null,
     totalCad: null,
     chargedCad: null,
+    tags: [],
   };
 }
 
 export function emptyDb(): Db {
-  return { version: 1, mailboxes: {}, lastSync: null, receipts: {}, statements: {}, fxCache: {} };
+  return { version: 1, mailboxes: {}, lastSync: null, receipts: {}, statements: {}, fxCache: {}, customCategories: [] };
+}
+
+/** Normalize a tag: lower-case, spaces to hyphens, safe characters only. */
+export function normalizeTag(t: string): string {
+  return t
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u00C0-\u024F\s_-]+/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+}
+
+export function allTags(db: Db): string[] {
+  const set = new Set<string>();
+  for (const r of Object.values(db.receipts)) for (const t of effectiveFields(r).tags) set.add(t);
+  return [...set].sort();
 }
 
 /** Extracted fields with the user's manual overrides applied, and CAD figures derived. */

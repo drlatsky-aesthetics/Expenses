@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const content = Buffer.from(await file.arrayBuffer());
     const id = newUploadId();
     const stored = await storeFiles(id, [{ name: file.name, contentType: type, content }]);
-    const result = await extractReceipt({ source: "upload", files: [{ name: file.name, contentType: type, content }] });
+    const result = await extractReceipt({ source: "upload", files: [{ name: file.name, contentType: type, content }], customCategories: db.customCategories });
     const now = new Date().toISOString();
     const receipt: Receipt = {
       id,

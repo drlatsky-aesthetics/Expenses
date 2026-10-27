@@ -2,11 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReceiptEditor from "@/components/ReceiptEditor";
 import { StatusPill } from "@/components/ReceiptsTable";
-import { CATEGORY_NAMES } from "@/lib/categories";
+import { categoryNames } from "@/lib/categories";
 import { claudeConfigured } from "@/lib/extract";
 import { fmtDate } from "@/lib/money";
 import { loadDb } from "@/lib/store";
-import { effectiveFields, needsReview } from "@/lib/types";
+import { allTags, effectiveFields, needsReview } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
           <h2 className="section" style={{ marginTop: 0 }}>
             Details
           </h2>
-          <ReceiptEditor receipt={r} fields={f} categories={CATEGORY_NAMES} canReextract={claudeConfigured()} />
+          <ReceiptEditor receipt={r} fields={f} categories={categoryNames(db.customCategories)} knownTags={allTags(db)} canReextract={claudeConfigured()} />
         </div>
         <div>
           <h2 className="section" style={{ marginTop: 0 }}>

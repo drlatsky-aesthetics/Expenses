@@ -49,6 +49,7 @@ function normalize(db: Partial<Db>): Db {
     receipts: db.receipts ?? {},
     statements: db.statements ?? {},
     fxCache: db.fxCache ?? {},
+    customCategories: db.customCategories ?? [],
   };
 }
 
