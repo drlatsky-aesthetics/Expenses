@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractReceipt } from "@/lib/extract";
-import { fetchMessageByUid, mailConfigured } from "@/lib/mail";
+import { fetchMessage, mailConfigured } from "@/lib/mail";
 import { getFile, loadDb, saveDb } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -24,7 +24,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   let html: string | null = null;
   if (r.source === "email" && r.email && mailConfigured()) {
     try {
-      const msg = await fetchMessageByUid(r.email.uid);
+      const msg = await fetchMessage({ messageId: r.email.messageId, uid: r.email.uid });
       if (msg) {
         text = msg.text;
         html = msg.html;

@@ -38,7 +38,10 @@ export function mailConfig() {
   const mailbox = process.env.IMAP_MAILBOX || "INBOX";
   const host = process.env.IMAP_HOST || "imap.gmail.com";
   const port = Number(process.env.IMAP_PORT || 993);
-  return { user, pass, mailbox, host, port };
+  const labelProcessed = process.env.MAIL_LABEL_PROCESSED || "Expenses/Processed";
+  const labelSkipped = process.env.MAIL_LABEL_SKIPPED || "Expenses/Skipped";
+  const archive = (process.env.MAIL_ARCHIVE || "true").toLowerCase() !== "false";
+  return { user, pass, mailbox, host, port, labelProcessed, labelSkipped, archive };
 }
 
 export function mailConfigured(): boolean {
@@ -159,21 +162,118 @@ export async function fetchNewMessages(opts: { afterUid: number; limit: number }
   }
 }
 
-/** Fetch one message by UID (used to re-run extraction or re-fetch originals). */
-export async function fetchMessageByUid(uid: number): Promise<MailMessage | null> {
+/** Gmail's "All Mail" folder (localized names vary, so look it up by special-use flag). */
+async function allMailPath(client: ImapFlow): Promise<string> {
+  try {
+    const boxes = await client.list();
+    const all = boxes.find((b) => b.specialUse === "\\All");
+    if (all) return all.path;
+  } catch {
+    // fall through
+  }
+  return "[Gmail]/All Mail";
+}
+
+/**
+ * Fetch one message (used to re-run extraction). Processed mail is archived, so look it up by
+ * Message-ID in All Mail first, then fall back to the UID in the scanned folder.
+ */
+export async function fetchMessage(ref: { messageId: string | null; uid: number }): Promise<MailMessage | null> {
   const { mailbox } = mailConfig();
   const client = await connect();
   try {
-    const lock = await client.getMailboxLock(mailbox);
-    try {
-      const msg = await client.fetchOne(String(uid), { uid: true, source: true, internalDate: true }, { uid: true });
-      if (!msg || !msg.source) return null;
-      const parsed = await simpleParser(msg.source);
-      return toMailMessage(msg.uid, parsed, new Date(msg.internalDate ?? Date.now()));
-    } finally {
-      lock.release();
+    const candidates = [await allMailPath(client), mailbox];
+    for (const path of candidates) {
+      let lock;
+      try {
+        lock = await client.getMailboxLock(path);
+      } catch {
+        continue;
+      }
+      try {
+        let uids: number[] = [];
+        if (ref.messageId) {
+          const found = await client.search({ header: { "message-id": ref.messageId } }, { uid: true });
+          uids = Array.isArray(found) ? found : [];
+        }
+        if (uids.length === 0 && path === mailbox) uids = [ref.uid];
+        for (const uid of uids) {
+          const msg = await client.fetchOne(String(uid), { uid: true, source: true, internalDate: true }, { uid: true });
+          if (msg && msg.source) {
+            const parsed = await simpleParser(msg.source);
+            return toMailMessage(msg.uid, parsed, new Date(msg.internalDate ?? Date.now()));
+          }
+        }
+      } finally {
+        lock.release();
+      }
     }
+    return null;
   } finally {
     await client.logout().catch(() => undefined);
   }
+}
+
+export interface MailOutcome {
+  uid: number;
+  /** "processed" = became an expense record; "skipped" = judged not a receipt. */
+  outcome: "processed" | "skipped";
+}
+
+export interface ApplyResult {
+  labeled: number;
+  archived: number;
+  error: string | null;
+}
+
+/**
+ * Tidy the inbox after a scan: add the outcome label (Gmail labels are IMAP folders, so a copy
+ * adds the label), mark the message read, and archive it (move out of INBOX into All Mail).
+ * Failures here never undo extraction; the next scan simply tries again.
+ */
+export async function applyOutcomes(outcomes: MailOutcome[]): Promise<ApplyResult> {
+  const result: ApplyResult = { labeled: 0, archived: 0, error: null };
+  if (outcomes.length === 0) return result;
+  const { mailbox, labelProcessed, labelSkipped, archive } = mailConfig();
+  let client: ImapFlow;
+  try {
+    client = await connect();
+  } catch (err) {
+    result.error = (err as Error).message;
+    return result;
+  }
+  try {
+    for (const label of [labelProcessed, labelSkipped]) {
+      try {
+        await client.mailboxCreate(label);
+      } catch {
+        // already exists
+      }
+    }
+    const allMail = archive ? await allMailPath(client) : null;
+    const lock = await client.getMailboxLock(mailbox);
+    try {
+      for (const o of outcomes) {
+        const label = o.outcome === "processed" ? labelProcessed : labelSkipped;
+        try {
+          await client.messageCopy(String(o.uid), label, { uid: true });
+          await client.messageFlagsAdd(String(o.uid), ["\\Seen"], { uid: true });
+          result.labeled++;
+          if (allMail && allMail !== mailbox) {
+            await client.messageMove(String(o.uid), allMail, { uid: true });
+            result.archived++;
+          }
+        } catch (err) {
+          result.error = `Could not file message ${o.uid}: ${(err as Error).message}`;
+        }
+      }
+    } finally {
+      lock.release();
+    }
+  } catch (err) {
+    result.error = (err as Error).message;
+  } finally {
+    await client.logout().catch(() => undefined);
+  }
+  return result;
 }

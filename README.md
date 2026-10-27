@@ -61,7 +61,10 @@ Safari remembers the Basic-auth login, so the home-screen app opens straight in.
 - Records are de-duplicated by `Message-ID`, so re-scans never create duplicates.
 - Vercel Cron hits `GET /api/sync` daily at 11:00 UTC (`vercel.json`). The Hobby plan allows
   daily crons; raise the frequency on Pro if desired.
-- Emails are never modified or deleted; the original stays in Gmail.
+- After a message is processed it is labeled `Expenses/Processed` (or `Expenses/Skipped` for
+  non-receipts), marked read, and archived out of the inbox. Nothing is deleted. Set
+  `MAIL_ARCHIVE=false` to keep processed mail in the inbox; `MAIL_LABEL_PROCESSED` /
+  `MAIL_LABEL_SKIPPED` rename the labels.
 
 ## Categories
 

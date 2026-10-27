@@ -131,7 +131,9 @@ export default async function OverviewPage() {
         <br />
         Mailbox: {user} · folder {mailbox} · {mailConfigured() ? "connected" : "no password set"}
         <br />
-        Last scan: {db.lastSync ? `${fmtDate(db.lastSync.at)} — ${db.lastSync.scanned} scanned, ${db.lastSync.added} added, ${db.lastSync.ignored} skipped${db.lastSync.more ? ", more waiting" : ""}` : "never"} · runs daily at 11:00 UTC via Vercel Cron
+        Last scan: {db.lastSync ? `${fmtDate(db.lastSync.at)} — ${db.lastSync.scanned} scanned, ${db.lastSync.added} added, ${db.lastSync.ignored} skipped${db.lastSync.filed ? `, ${db.lastSync.filed} filed in Gmail` : ""}${db.lastSync.more ? ", more waiting" : ""}` : "never"} · runs daily at 11:00 UTC via Vercel Cron
+        <br />
+        After processing, emails are labeled Expenses/Processed or Expenses/Skipped, marked read and archived.
         <br />
         Reading: {claudeConfigured() ? "Claude" : "pattern matcher (no API key)"} · Storage: {storageMode() === "blob" ? "Vercel Blob (expenses-receipts)" : "local .data folder"} · {all.length} records
       </div>

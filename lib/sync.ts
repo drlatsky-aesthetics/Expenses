@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { fetchNewMessages, mailConfig, type MailMessage, type MailAttachment } from "./mail";
+import { applyOutcomes, fetchNewMessages, mailConfig, type MailMessage, type MailAttachment, type MailOutcome } from "./mail";
 import { loadDb, putFile, safeFileName, saveDb } from "./store";
 import { extractReceipt, bodyText } from "./extract";
 import { Db, FileKind, Receipt, StoredFile, SyncInfo } from "./types";
@@ -100,7 +100,8 @@ export async function syncMailbox(opts: SyncOptions = {}): Promise<SyncInfo> {
   const db: Db = await loadDb();
   const state = db.mailboxes[mailbox] ?? { uidValidity: null, lastUid: 0 };
 
-  const info: SyncInfo = { at: new Date().toISOString(), added: 0, ignored: 0, scanned: 0, more: false, error: null };
+  const info: SyncInfo = { at: new Date().toISOString(), added: 0, ignored: 0, scanned: 0, more: false, error: null, filed: 0 };
+  const outcomes: MailOutcome[] = [];
 
   try {
     // Peek at UIDVALIDITY first; if Gmail reset it, restart from UID 0 (dedupe by Message-ID protects us).
@@ -111,20 +112,23 @@ export async function syncMailbox(opts: SyncOptions = {}): Promise<SyncInfo> {
       fetched = await fetchNewMessages({ afterUid, limit });
     }
 
-    const knownMessageIds = new Set(
-      Object.values(db.receipts)
-        .map((r) => r.email?.messageId)
-        .filter((x): x is string => Boolean(x)),
-    );
+    const known = new Map<string, Receipt>();
+    for (const r of Object.values(db.receipts)) if (r.email?.messageId) known.set(r.email.messageId, r);
 
     let lastUid = afterUid;
     for (const msg of fetched.messages) {
       info.scanned++;
       lastUid = Math.max(lastUid, msg.uid);
-      if (msg.messageId && knownMessageIds.has(msg.messageId)) continue;
+      const dup = msg.messageId ? known.get(msg.messageId) : undefined;
+      if (dup) {
+        // Already recorded (e.g. a previous run timed out before filing it): just file the email.
+        outcomes.push({ uid: msg.uid, outcome: dup.status === "ignored" ? "skipped" : "processed" });
+        continue;
+      }
       const receipt = await receiptFromMessage(msg, mailbox, fetched.uidValidity);
       if (db.receipts[receipt.id]) continue;
       db.receipts[receipt.id] = receipt;
+      outcomes.push({ uid: msg.uid, outcome: receipt.status === "ignored" ? "skipped" : "processed" });
       if (receipt.status === "ignored") info.ignored++;
       else info.added++;
       // Persist progress after each message so a timeout never loses work.
@@ -137,6 +141,13 @@ export async function syncMailbox(opts: SyncOptions = {}): Promise<SyncInfo> {
     db.mailboxes[mailbox] = { uidValidity: fetched.uidValidity, lastUid };
   } catch (err) {
     info.error = err instanceof Error ? err.message : String(err);
+  }
+
+  // Label, mark read and archive everything that was recorded, even if the run stopped early.
+  if (outcomes.length) {
+    const filed = await applyOutcomes(outcomes);
+    info.filed = filed.labeled;
+    if (filed.error && !info.error) info.error = `Receipts were saved, but filing in Gmail failed: ${filed.error}`;
   }
 
   db.lastSync = info;

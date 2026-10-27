@@ -97,6 +97,8 @@ export interface SyncInfo {
   scanned: number;
   more: boolean;
   error: string | null;
+  /** Emails labeled/archived in Gmail during this run. */
+  filed?: number;
 }
 
 export interface Db {
