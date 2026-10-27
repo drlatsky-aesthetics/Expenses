@@ -699,10 +699,26 @@ details > summary::-webkit-details-marker {
   }
   table.data {
     font-size: 13px;
+    table-layout: fixed;
   }
   table.data th,
   table.data td {
-    padding: 9px 8px;
+    padding: 9px 6px;
+    overflow-wrap: anywhere;
+  }
+  table.data th.col-date,
+  table.data td.col-date {
+    width: 25%;
+    white-space: normal;
+  }
+  table.data th.col-total,
+  table.data td.col-total {
+    width: 26%;
+  }
+  table.data .pill {
+    white-space: normal;
+    line-height: 1.5;
+    text-align: left;
   }
   .preview iframe {
     display: none;

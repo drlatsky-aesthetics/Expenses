@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isKnownCategory } from "@/lib/categories";
 import { loadDb, saveDb } from "@/lib/store";
-import { ReceiptFields, ReceiptStatus } from "@/lib/types";
+import { ReceiptFields, ReceiptStatus, effectiveFields } from "@/lib/types";
+import { ensureFx } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,10 @@ const FieldsPatch = z
     paymentMethod: z.string().max(120).nullable(),
     invoiceNumber: z.string().max(120).nullable(),
     lineItems: z.array(z.object({ description: z.string().max(300), quantity: Num, amount: Num })).max(50),
+    fxRate: Num,
+    fxSource: z.enum(["boc", "manual"]).nullable(),
+    totalCad: Num,
+    chargedCad: Num,
   })
   .partial();
 
@@ -65,6 +70,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       else (overrides as Record<string, unknown>)[k] = v;
     }
     r.overrides = overrides;
+    // A manually entered rate sticks; otherwise refresh the Bank of Canada rate for the (possibly new) date/currency.
+    const eff = effectiveFields(r);
+    if (eff.currency !== "CAD" && eff.fxSource !== "manual") {
+      const { fxRate: _a, fxSource: _b, totalCad: _c, ...rest } = r.overrides;
+      r.overrides = rest;
+      r.extracted = { ...r.extracted, fxRate: null, fxSource: null, totalCad: null };
+      await ensureFx(db, r);
+    }
   }
   if (status) r.status = status as ReceiptStatus;
   if (note !== undefined) r.note = note;

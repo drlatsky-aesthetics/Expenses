@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractReceipt } from "@/lib/extract";
 import { fetchMessage, mailConfigured } from "@/lib/mail";
 import { getFile, loadDb, saveDb } from "@/lib/store";
+import { ensureFx } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   r.extracted = result.fields;
   r.extraction = result.info;
+  await ensureFx(db, r);
   if (r.status === "auto" || r.status === "ignored") r.status = result.info.isReceipt ? "auto" : "ignored";
   r.updatedAt = new Date().toISOString();
   db.receipts[id] = r;

@@ -19,6 +19,13 @@ every push to `main` deploys.
   original files, so receipts are viewable in the app without going back to Gmail.
 - **Review and edit**: every field can be corrected; edits are kept separately from what the AI
   extracted, so re-reading never clobbers a manual fix. Mark records *Reviewed* or *Not a receipt*.
+- **Canadian dollars throughout.** Receipts keep their original currency and amount; every
+  report converts at the **Bank of Canada daily rate** for the receipt date (CRA-accepted), fetched
+  automatically and cached. A rate can be overridden per receipt.
+- **Card statements** (Statements tab): upload Amex (or any card) exports as CSV or PDF. Each
+  charge is matched to a receipt by amount, date and vendor; the CAD amount the card actually
+  charged is recorded on the receipt for reference. Charges without a receipt and receipts without
+  a charge are flagged, and you can link, unlink or mark a line "not an expense" by hand.
 - **Reports**: period picker (month, quarter, year, custom), totals, by category, by vendor, by
   month, sales-tax summary for input tax credits, and exports — **Statement PDF** (summary +
   receipt detail), **Summary PDF**, and **CSV** for the accountant.

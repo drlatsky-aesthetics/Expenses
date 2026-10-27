@@ -3,6 +3,7 @@ import { applyOutcomes, fetchNewMessages, mailConfig, type MailMessage, type Mai
 import { loadDb, putFile, safeFileName, saveDb } from "./store";
 import { extractReceipt, bodyText } from "./extract";
 import { Db, FileKind, Receipt, StoredFile, SyncInfo } from "./types";
+import { ensureFx } from "./fx";
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/tiff"]);
 const MIN_INLINE_IMAGE_BYTES = 40 * 1024; // skip logos and tracking pixels
@@ -127,6 +128,7 @@ export async function syncMailbox(opts: SyncOptions = {}): Promise<SyncInfo> {
       }
       const receipt = await receiptFromMessage(msg, mailbox, fetched.uidValidity);
       if (db.receipts[receipt.id]) continue;
+      await ensureFx(db, receipt);
       db.receipts[receipt.id] = receipt;
       outcomes.push({ uid: msg.uid, outcome: receipt.status === "ignored" ? "skipped" : "processed" });
       if (receipt.status === "ignored") info.ignored++;

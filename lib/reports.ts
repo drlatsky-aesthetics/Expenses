@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { Receipt, ReceiptFields, effectiveFields, reportDate } from "./types";
+import { Receipt, ReceiptFields, effectiveFields, reportDate, toCad } from "./types";
 import { Period, fmtDate, inPeriod, round2 } from "./money";
 
 export interface ReportRow {
@@ -17,8 +17,16 @@ export interface ReportRow {
   qst: number | null;
   otherTax: number | null;
   tip: number | null;
+  /** All money columns are CAD. */
   total: number;
   currency: string;
+  /** Original amount in the receipt's own currency (same as total for CAD). */
+  totalOriginal: number;
+  fxRate: number | null;
+  fxSource: string | null;
+  chargedCad: number | null;
+  /** True when a foreign receipt still has no rate: it is excluded from CAD totals. */
+  unconverted: boolean;
   paymentMethod: string;
   invoiceNumber: string;
   source: string;
@@ -70,6 +78,9 @@ export interface Summary {
   byMonth: MonthTotal[];
   taxes: TaxSummary;
   currencies: string[];
+  /** Foreign receipts that have no CAD figure yet (not included in totals). */
+  unconvertedCount: number;
+  foreignCount: number;
 }
 
 /** Receipts that count as expenses: not ignored, with a total. */
@@ -79,6 +90,10 @@ export function expenseReceipts(all: Receipt[]): Receipt[] {
 
 export function toRow(r: Receipt): ReportRow {
   const f: ReceiptFields = effectiveFields(r);
+  const foreign = f.currency !== "CAD";
+  const unconverted = foreign && f.totalCad === null;
+  // Foreign sales taxes are not Canadian ITCs; they are reported under "other tax".
+  const cadTax = toCad(f, f.tax);
   return {
     id: r.id,
     date: reportDate(r),
@@ -86,16 +101,21 @@ export function toRow(r: Receipt): ReportRow {
     category: f.category,
     description: f.description ?? "",
     purpose: f.purpose ?? "",
-    subtotal: f.subtotal,
-    tax: f.tax,
-    gst: f.taxBreakdown?.gst ?? null,
-    hst: f.taxBreakdown?.hst ?? null,
-    pst: f.taxBreakdown?.pst ?? null,
-    qst: f.taxBreakdown?.qst ?? null,
-    otherTax: f.taxBreakdown?.other ?? null,
-    tip: f.tip,
-    total: f.total ?? 0,
+    subtotal: toCad(f, f.subtotal),
+    tax: cadTax,
+    gst: foreign ? null : f.taxBreakdown?.gst ?? null,
+    hst: foreign ? null : f.taxBreakdown?.hst ?? null,
+    pst: foreign ? null : f.taxBreakdown?.pst ?? null,
+    qst: foreign ? null : f.taxBreakdown?.qst ?? null,
+    otherTax: foreign ? cadTax : f.taxBreakdown?.other ?? null,
+    tip: toCad(f, f.tip),
+    total: f.totalCad ?? 0,
     currency: f.currency,
+    totalOriginal: f.total ?? 0,
+    fxRate: f.fxRate,
+    fxSource: f.fxSource,
+    chargedCad: f.chargedCad,
+    unconverted,
     paymentMethod: f.paymentMethod ?? "",
     invoiceNumber: f.invoiceNumber ?? "",
     source: r.source,
@@ -119,8 +139,15 @@ export function summarize(all: Receipt[], period: Period, category?: string): Su
   let subtotal = 0;
   let tax = 0;
   const currencies = new Set<string>();
+  let unconvertedCount = 0;
+  let foreignCount = 0;
 
   for (const row of rows) {
+    if (row.currency !== "CAD") foreignCount++;
+    if (row.unconverted) {
+      unconvertedCount++;
+      continue;
+    }
     total += row.total;
     subtotal += row.subtotal ?? (row.total - (row.tax ?? 0) - (row.tip ?? 0));
     tax += row.tax ?? 0;
@@ -178,28 +205,30 @@ export function summarize(all: Receipt[], period: Period, category?: string): Su
     byMonth: [...mon.values()].map(r2).sort((a, b) => (a.month < b.month ? -1 : 1)),
     taxes,
     currencies: [...currencies],
+    unconvertedCount,
+    foreignCount,
   };
 }
 
 // ---------- CSV ----------
 
-function csvCell(v: string | number | null): string {
+function csvCell(v: string | number | null, decimals = 2): string {
   if (v === null || v === undefined) return "";
-  const s = typeof v === "number" ? v.toFixed(2) : String(v);
+  const s = typeof v === "number" ? v.toFixed(decimals) : String(v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export function detailCsv(summary: Summary): string {
   const header = [
-    "Date", "Vendor", "Category", "Description", "Business purpose", "Subtotal", "GST", "HST", "PST", "QST", "Other tax", "Total tax", "Tip", "Total", "Currency", "Payment method", "Invoice #", "Source", "Status", "Note", "Receipt ID",
+    "Date", "Vendor", "Category", "Description", "Business purpose", "Subtotal (CAD)", "GST", "HST", "PST", "QST", "Other tax (CAD)", "Total tax (CAD)", "Tip (CAD)", "Total (CAD)", "Original currency", "Original total", "FX rate (Bank of Canada)", "FX source", "Card charged (CAD)", "Payment method", "Invoice #", "Source", "Status", "Note", "Receipt ID",
   ];
   const lines = [header.join(",")];
   for (const r of summary.rows) {
     lines.push(
       [
-        r.date, r.vendor, r.category, r.description, r.purpose, r.subtotal, r.gst, r.hst, r.pst, r.qst, r.otherTax, r.tax, r.tip, r.total, r.currency, r.paymentMethod, r.invoiceNumber, r.source, r.status, r.note, r.id,
+        r.date, r.vendor, r.category, r.description, r.purpose, r.subtotal, r.gst, r.hst, r.pst, r.qst, r.otherTax, r.tax, r.tip, r.unconverted ? null : r.total, r.currency, r.totalOriginal, csvCell(r.fxRate, 4), r.fxSource ?? "", r.chargedCad, r.paymentMethod, r.invoiceNumber, r.source, r.status, r.note, r.id,
       ]
-        .map(csvCell)
+        .map((v) => csvCell(v))
         .join(","),
     );
   }
@@ -344,7 +373,7 @@ class PdfWriter {
 export async function statementPdf(summary: Summary, opts: { practice: string; includeDetail: boolean; includeTax: boolean }): Promise<Uint8Array> {
   const generated = new Date().toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" });
   const w = await PdfWriter.create(`${opts.practice} · Expense statement · ${summary.period.label} · generated ${generated}`);
-  const cur = summary.currencies.length === 1 ? summary.currencies[0] : "CAD";
+  const cur = "CAD";
 
   // Header
   w.text(opts.practice, { size: 16, bold: true, color: GOLD, gap: 2 });
@@ -369,8 +398,11 @@ export async function statementPdf(summary: Summary, opts: { practice: string; i
     w.page.drawText(value, { x: x + 10, y: w.y - 40, size: 14, font: w.bold, color: i === 0 ? rgb(1, 1, 1) : INK });
   });
   w.y -= 66;
-  if (summary.currencies.length > 1) {
-    w.text(`Note: receipts in ${summary.currencies.join(", ")} are summed at face value; convert foreign amounts before filing.`, { size: 8, color: MUTED });
+  if (summary.foreignCount > 0) {
+    w.text(
+      `All amounts in CAD. ${summary.foreignCount} foreign-currency receipt${summary.foreignCount === 1 ? "" : "s"} converted at the Bank of Canada daily rate for the receipt date.${summary.unconvertedCount ? ` ${summary.unconvertedCount} still unconverted and excluded.` : ""}`,
+      { size: 8, color: MUTED },
+    );
   }
 
   // By category
@@ -434,9 +466,9 @@ export async function statementPdf(summary: Summary, opts: { practice: string; i
         date: r.date,
         vendor: r.vendor || "(unknown)",
         category: r.category,
-        description: r.description || r.purpose,
-        tax: money(r.tax, r.currency),
-        total: money(r.total, r.currency),
+        description: r.currency !== "CAD" ? `${r.description || r.purpose} (${r.currency} ${r.totalOriginal.toFixed(2)})` : r.description || r.purpose,
+        tax: money(r.tax, cur),
+        total: r.unconverted ? "unconverted" : money(r.total, cur),
       })),
       { zebra: true, size: 8, totalRow: { date: "Total", vendor: `${summary.count} receipts`, tax: money(summary.tax, cur), total: money(summary.total, cur) } },
     );

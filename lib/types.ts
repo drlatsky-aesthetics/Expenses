@@ -27,6 +27,8 @@ export interface LineItem {
   amount: number | null;
 }
 
+export type FxSource = "boc" | "manual" | null;
+
 export interface ReceiptFields {
   vendor: string | null;
   /** Transaction date, YYYY-MM-DD. */
@@ -47,6 +49,40 @@ export interface ReceiptFields {
   paymentMethod: string | null;
   invoiceNumber: string | null;
   lineItems: LineItem[];
+  /** CAD per 1 unit of `currency` (1 for CAD). */
+  fxRate: number | null;
+  /** Where the rate / CAD amount came from: Bank of Canada, a card statement, or a manual entry. */
+  fxSource: FxSource;
+  /** Total in CAD at the Bank of Canada rate (the figure used in every report). */
+  totalCad: number | null;
+  /** What the card statement shows was charged in CAD, when matched (reference only). */
+  chargedCad: number | null;
+}
+
+export interface StatementTransaction {
+  id: string;
+  date: string; // YYYY-MM-DD
+  description: string;
+  /** Amount charged in CAD; negative for payments/credits. */
+  amount: number;
+  foreignAmount: number | null;
+  foreignCurrency: string | null;
+  matchedReceiptId: string | null;
+  /** True when the user says this charge is not a business expense (or a payment). */
+  ignored: boolean;
+}
+
+export interface Statement {
+  id: string;
+  account: string;
+  name: string;
+  uploadedAt: string;
+  periodFrom: string | null;
+  periodTo: string | null;
+  files: StoredFile[];
+  transactions: StatementTransaction[];
+  parser: "csv" | "claude" | "none";
+  notes: string | null;
 }
 
 export interface EmailMeta {
@@ -83,6 +119,8 @@ export interface Receipt {
   overrides: Partial<ReceiptFields>;
   status: ReceiptStatus;
   note: string | null;
+  /** Card statement line this receipt was matched to, if any. */
+  match?: { statementId: string; transactionId: string } | null;
 }
 
 export interface MailboxState {
@@ -106,6 +144,9 @@ export interface Db {
   mailboxes: Record<string, MailboxState>;
   lastSync: SyncInfo | null;
   receipts: Record<string, Receipt>;
+  statements: Record<string, Statement>;
+  /** Bank of Canada rate cache, key "USD:2026-10-20" -> CAD per unit. */
+  fxCache: Record<string, number>;
 }
 
 export function emptyFields(currency = "CAD"): ReceiptFields {
@@ -124,16 +165,37 @@ export function emptyFields(currency = "CAD"): ReceiptFields {
     paymentMethod: null,
     invoiceNumber: null,
     lineItems: [],
+    fxRate: currency === "CAD" ? 1 : null,
+    fxSource: null,
+    totalCad: null,
+    chargedCad: null,
   };
 }
 
 export function emptyDb(): Db {
-  return { version: 1, mailboxes: {}, lastSync: null, receipts: {} };
+  return { version: 1, mailboxes: {}, lastSync: null, receipts: {}, statements: {}, fxCache: {} };
 }
 
-/** Extracted fields with the user's manual overrides applied. */
+/** Extracted fields with the user's manual overrides applied, and CAD figures derived. */
 export function effectiveFields(r: Receipt): ReceiptFields {
-  return { ...r.extracted, ...r.overrides };
+  const f: ReceiptFields = { ...emptyFields(), ...r.extracted, ...r.overrides };
+  if (f.currency === "CAD") {
+    f.fxRate = 1;
+    f.totalCad = f.total;
+  } else if (f.fxRate !== null && f.total !== null) {
+    f.totalCad = Math.round(f.total * f.fxRate * 100) / 100;
+  } else {
+    f.totalCad = null;
+  }
+  return f;
+}
+
+/** CAD value of a receipt field (subtotal, tax...) using the receipt's effective rate. */
+export function toCad(f: ReceiptFields, amount: number | null): number | null {
+  if (amount === null) return null;
+  if (f.currency === "CAD") return amount;
+  if (f.fxRate === null) return null;
+  return Math.round(amount * f.fxRate * 100) / 100;
 }
 
 /** The date used for reporting: receipt date, else the email received date, else creation date. */
@@ -150,6 +212,7 @@ export function needsReview(r: Receipt): boolean {
   return (
     r.extraction.confidence < 0.7 ||
     f.total === null ||
+    f.totalCad === null ||
     !f.vendor ||
     f.category === "Uncategorized"
   );

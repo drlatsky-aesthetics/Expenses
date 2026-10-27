@@ -4,7 +4,8 @@ import PeriodPicker from "@/components/PeriodPicker";
 import { CATEGORIES, CATEGORY_NAMES } from "@/lib/categories";
 import { fmtMoney, periodFromQuery } from "@/lib/money";
 import { summarize } from "@/lib/reports";
-import { loadDb } from "@/lib/store";
+import { loadDb, saveDb } from "@/lib/store";
+import { backfillFx } from "@/lib/fx";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const period = periodFromQuery(q);
   const category = q.category && CATEGORY_NAMES.concat("Uncategorized").includes(q.category) ? q.category : undefined;
   const db = await loadDb();
+  if ((await backfillFx(db)) > 0) await saveDb(db);
   const s = summarize(Object.values(db.receipts), period, category);
   const qs = new URLSearchParams();
   if (q.from && q.to) {
@@ -22,7 +24,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     qs.set("to", q.to);
   } else qs.set("preset", q.preset || "month");
   if (category) qs.set("category", category);
-  const cur = s.currencies.length === 1 ? s.currencies[0] : "CAD";
+  const cur = "CAD";
   const maxMonth = Math.max(1, ...s.byMonth.map((m) => m.total));
   const lineFor = (name: string) => CATEGORIES.find((c) => c.name === name)?.line ?? "";
 
@@ -37,8 +39,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <h1 className="title">Expense statement — {period.label}</h1>
           <div className="small muted">
             {category ? `${category} only · ` : ""}
-            {s.count} receipt{s.count === 1 ? "" : "s"}
-            {s.currencies.length > 1 && <> · mixed currencies ({s.currencies.join(", ")}) summed at face value</>}
+            {s.count} receipt{s.count === 1 ? "" : "s"} · all amounts in CAD
+            {s.foreignCount > 0 && <> · {s.foreignCount} foreign receipt{s.foreignCount === 1 ? "" : "s"} converted at the Bank of Canada daily rate</>}
+            {s.unconvertedCount > 0 && <> · <span style={{ color: "var(--danger)" }}>{s.unconvertedCount} without a rate, excluded</span></>}
           </div>
         </div>
         <div className="actions no-print row stack-sm" style={{ flex: "0 1 auto" }}>
@@ -213,18 +216,18 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <table className="data">
           <thead>
             <tr>
-              <th>Date</th>
+              <th className="col-date">Date</th>
               <th>Vendor</th>
               <th className="hide-sm">Description</th>
               <th className="hide-sm">Category</th>
               <th className="num hide-sm">Tax</th>
-              <th className="num">Total</th>
+              <th className="num col-total">Total (CAD)</th>
             </tr>
           </thead>
           <tbody>
             {s.rows.map((r) => (
               <tr key={r.id}>
-                <td style={{ whiteSpace: "nowrap" }}>{r.date}</td>
+                <td className="col-date">{r.date}</td>
                 <td>
                   <Link href={`/receipts/${r.id}`} style={{ color: "inherit", fontWeight: 600 }}>
                     {r.vendor || "Unknown"}
@@ -237,8 +240,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                 <td className="hide-sm">
                   <span className="pill">{r.category}</span>
                 </td>
-                <td className="num hide-sm">{fmtMoney(r.tax, r.currency)}</td>
-                <td className="num">{fmtMoney(r.total, r.currency)}</td>
+                <td className="num hide-sm">{fmtMoney(r.tax)}</td>
+                <td className="num col-total">
+                  {r.unconverted ? <span className="pill amber">No rate</span> : fmtMoney(r.total)}
+                  {r.currency !== "CAD" && (
+                    <div className="small faint">
+                      {fmtMoney(r.totalOriginal, r.currency)} {r.currency}
+                      {r.fxRate ? ` @ ${r.fxRate.toFixed(4)}` : ""}
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
             {s.rows.length === 0 && (

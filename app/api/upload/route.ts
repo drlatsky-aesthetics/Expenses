@@ -3,6 +3,7 @@ import { extractReceipt } from "@/lib/extract";
 import { loadDb, saveDb } from "@/lib/store";
 import { newUploadId, storeFiles } from "@/lib/sync";
 import { Receipt } from "@/lib/types";
+import { ensureFx } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
       status: result.info.isReceipt ? "auto" : "ignored",
       note: null,
     };
+    await ensureFx(db, receipt);
     db.receipts[id] = receipt;
     ids.push(id);
   }

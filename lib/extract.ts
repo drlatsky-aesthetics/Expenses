@@ -232,6 +232,10 @@ function toFields(p: z.infer<typeof ReceiptSchema>): ReceiptFields {
       quantity: li.quantity,
       amount: num(li.amount),
     })),
+    fxRate: currency === "CAD" ? 1 : null,
+    fxSource: null,
+    totalCad: null,
+    chargedCad: null,
   };
 }
 
@@ -335,7 +339,7 @@ function heuristicExtract(input: ExtractInput, text: string, reason: string | nu
   const currency = /\bUSD\b|US\$/.test(hay) ? "USD" : /\bEUR\b|€/.test(hay) ? "EUR" : defaultCurrency();
   const vendor = vendorFromSender(input, hay);
   const date = findDate(hay) ?? (input.receivedAt ? input.receivedAt.slice(0, 10) : null);
-  const invoice = hay.match(/(?:invoice|order|receipt)\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9-]{4,})/i)?.[1] ?? null;
+  const invoice = hay.match(/(?:invoice|order|receipt)\s*(?:#|no\.?|number)?\s*[:#]?\s*((?=[A-Z0-9-]*\d)[A-Z0-9-]{4,})/i)?.[1] ?? null;
   const category = guessCategory(`${vendor ?? ""} ${input.subject ?? ""} ${hay.slice(0, 2000)}`);
 
   const fields: ReceiptFields = {

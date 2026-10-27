@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { loadDb, storageMode } from "@/lib/store";
+import { loadDb, saveDb, storageMode } from "@/lib/store";
+import { backfillFx } from "@/lib/fx";
 import { Receipt, effectiveFields, needsReview, reportDate } from "@/lib/types";
 import { claudeConfigured } from "@/lib/extract";
 import { mailConfigured, mailConfig } from "@/lib/mail";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
   const db = await loadDb();
+  if ((await backfillFx(db)) > 0) await saveDb(db);
   const all = Object.values(db.receipts);
   const month = summarize(all, presetPeriod("month"));
   const lastMonth = summarize(all, presetPeriod("last-month"));

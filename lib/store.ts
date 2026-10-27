@@ -47,6 +47,8 @@ function normalize(db: Partial<Db>): Db {
     mailboxes: db.mailboxes ?? base.mailboxes,
     lastSync: db.lastSync ?? null,
     receipts: db.receipts ?? {},
+    statements: db.statements ?? {},
+    fxCache: db.fxCache ?? {},
   };
 }
 

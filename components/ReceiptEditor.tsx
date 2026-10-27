@@ -79,6 +79,8 @@ export default function ReceiptEditor({ receipt, fields, categories, canReextrac
   }
 
   const taxSum = ["gst", "hst", "pst", "qst", "other"].reduce((a, k) => a + (f.taxBreakdown[k as keyof typeof f.taxBreakdown] ?? 0), 0);
+  const foreign = f.currency !== "CAD";
+  const setFx = (patch: Partial<Pick<ReceiptFields, "fxRate" | "totalCad">>) => setF((p) => ({ ...p, ...patch, fxSource: patch.fxRate === null ? null : "manual" }));
 
   return (
     <div>
@@ -168,6 +170,44 @@ export default function ReceiptEditor({ receipt, fields, categories, canReextrac
           </span>
         )}
       </div>
+
+      {foreign && (
+        <>
+          <h2 className="section">Canadian dollars</h2>
+          <div className="row stack-sm">
+            <div className="field" style={{ width: 170 }}>
+              <span className="label">Rate (CAD per {f.currency})</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                value={f.fxRate ?? ""}
+                onChange={(e) => {
+                  const rate = numInput(e.target.value);
+                  setFx({ fxRate: rate, totalCad: rate !== null && f.total !== null ? Math.round(f.total * rate * 100) / 100 : null });
+                }}
+              />
+            </div>
+            <div className="field" style={{ width: 170 }}>
+              <span className="label">Total in CAD (reports)</span>
+              <input className="input" readOnly style={{ fontWeight: 700, background: "var(--highlight)" }} value={f.totalCad !== null ? f.totalCad.toFixed(2) : ""} placeholder="no rate yet" />
+            </div>
+            {f.chargedCad !== null && (
+              <div className="field" style={{ width: 170 }}>
+                <span className="label">Card charged (CAD)</span>
+                <input className="input" readOnly style={{ background: "var(--highlight)" }} value={f.chargedCad.toFixed(2)} />
+              </div>
+            )}
+            <span className="small muted" style={{ alignSelf: "flex-end", paddingBottom: 8, flex: 1, minWidth: 200 }}>
+              {f.fxSource === "manual"
+                ? "Rate entered manually. Clear it and save to return to the Bank of Canada rate."
+                : f.fxSource === "boc"
+                  ? "Bank of Canada daily rate for the receipt date (CRA-accepted). Reports use this figure."
+                  : "No rate yet: save to fetch the Bank of Canada rate, or enter one."}
+              {f.chargedCad !== null && f.totalCad !== null && ` The card charged ${fmtMoney(f.chargedCad)}, ${fmtMoney(Math.round((f.chargedCad - f.totalCad) * 100) / 100)} difference (conversion fee).`}
+            </span>
+          </div>
+        </>
+      )}
 
       {f.lineItems.length > 0 && (
         <>

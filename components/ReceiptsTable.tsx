@@ -11,6 +11,7 @@ export interface ReceiptRowView {
   category: string;
   description: string;
   total: number | null;
+  totalCad: number | null;
   tax: number | null;
   currency: string;
   status: "auto" | "reviewed" | "ignored";
@@ -42,7 +43,7 @@ export default function ReceiptsTable({ rows, categories }: { rows: ReceiptRowVi
     });
   }, [rows, q, cat, view]);
 
-  const sum = filtered.reduce((a, r) => a + (r.status !== "ignored" ? r.total ?? 0 : 0), 0);
+  const sum = filtered.reduce((a, r) => a + (r.status !== "ignored" ? r.totalCad ?? 0 : 0), 0);
   const reviewCount = rows.filter((r) => r.needsReview).length;
   const ignoredCount = rows.filter((r) => r.status === "ignored").length;
 
@@ -73,13 +74,13 @@ export default function ReceiptsTable({ rows, categories }: { rows: ReceiptRowVi
         <table className="data">
           <thead>
             <tr>
-              <th>Date</th>
+              <th className="col-date">Date</th>
               <th>Vendor</th>
               <th className="hide-sm">Description</th>
               <th className="hide-sm">Category</th>
               <th className="hide-sm">Status</th>
               <th className="num hide-sm">Tax</th>
-              <th className="num">Total</th>
+              <th className="num col-total">Total (CAD)</th>
             </tr>
           </thead>
           <tbody>
@@ -90,7 +91,7 @@ export default function ReceiptsTable({ rows, categories }: { rows: ReceiptRowVi
             ) : (
               filtered.map((r) => (
                 <tr key={r.id} className="link" onClick={() => router.push(`/receipts/${r.id}`)}>
-                  <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.date)}</td>
+                  <td className="col-date">{fmtDate(r.date)}</td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{r.vendor || <span className="faint">Unknown vendor</span>}</div>
                     <div className="show-sm" style={{ marginTop: 4 }}>
@@ -112,8 +113,17 @@ export default function ReceiptsTable({ rows, categories }: { rows: ReceiptRowVi
                     <StatusPill r={r} />
                   </td>
                   <td className="num hide-sm muted">{fmtMoney(r.tax, r.currency)}</td>
-                  <td className="num" style={{ fontWeight: 600 }}>
-                    {fmtMoney(r.total, r.currency)}
+                  <td className="num col-total" style={{ fontWeight: 600 }}>
+                    {r.currency === "CAD" ? (
+                      fmtMoney(r.total)
+                    ) : (
+                      <>
+                        {r.totalCad === null ? <span className="pill amber">No rate</span> : fmtMoney(r.totalCad)}
+                        <div className="small faint" style={{ fontWeight: 400 }}>
+                          {fmtMoney(r.total, r.currency)} {r.currency}
+                        </div>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))
