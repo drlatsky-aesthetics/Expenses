@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import PeriodPicker from "@/components/PeriodPicker";
 import ReportPreview from "@/components/ReportPreview";
+import TrendSection from "@/components/TrendSection";
+import { computeTrends } from "@/lib/trends";
 import { UNCATEGORIZED, categoryNames } from "@/lib/categories";
 import { backfillFx } from "@/lib/fx";
 import { periodFromQuery } from "@/lib/money";
@@ -21,7 +23,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const names = categoryNames(db.customCategories);
   const category = q.category && names.concat(UNCATEGORIZED).includes(q.category) ? q.category : undefined;
   const tag = q.tag && allTags(db).includes(q.tag) ? q.tag : undefined;
-  const s = summarize(Object.values(db.receipts), period, category, tag);
+  const all = Object.values(db.receipts);
+  const s = summarize(all, period, category, tag);
+  const trends = computeTrends(all, period, category, tag);
   const qs = new URLSearchParams();
   if (q.from && q.to) {
     qs.set("from", q.from);
@@ -59,6 +63,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </a>
         </div>
       </div>
+
+      <TrendSection summary={s} trends={trends} />
 
       <ReportPreview summary={s} customCategories={db.customCategories} qs={qs.toString()} full />
 

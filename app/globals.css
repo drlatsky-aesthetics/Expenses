@@ -770,3 +770,233 @@ details > summary::-webkit-details-marker {
     display: none !important;
   }
 }
+
+/* ---------- Comparison chips & charts ---------- */
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 18px;
+}
+.chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
+  min-width: 150px;
+}
+.chip .label {
+  font-size: 9px;
+}
+.chip .value {
+  font-size: 16px;
+  font-weight: 500;
+}
+.chip .delta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.chip .delta.up::before {
+  content: "▲ ";
+  font-size: 9px;
+}
+.chip .delta.down::before {
+  content: "▼ ";
+  font-size: 9px;
+}
+.chip.accent {
+  background: var(--highlight);
+  border-color: var(--highlight);
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.chart-card {
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
+  padding: 12px 14px 8px;
+  min-width: 0;
+}
+.chart-card h3 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.chart-card .sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.chart-wrap {
+  position: relative;
+}
+.chart {
+  display: block;
+  overflow: visible;
+}
+.chart-grid {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+.chart-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.chart-tick {
+  font-size: 10px;
+  fill: var(--faint);
+  font-family: var(--sans);
+}
+.chart-tick.strong {
+  fill: var(--ink);
+  font-weight: 500;
+}
+.chart-value {
+  font-size: 11px;
+  fill: var(--ink);
+  font-family: var(--sans);
+  font-weight: 500;
+}
+.chart-bar {
+  fill: var(--accent);
+  opacity: 0.32;
+  transition: opacity 0.12s;
+}
+.chart-bar.emphasis {
+  opacity: 1;
+}
+.chart-bar.outline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0.9;
+}
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart-line.muted {
+  stroke: var(--faint);
+}
+.chart-dot {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.chart-area-stop {
+  stop-color: var(--accent);
+  stop-opacity: 0.12;
+}
+.chart-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.chart-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-key {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.chart-key.outline {
+  background: none;
+  border: 1.5px solid var(--accent);
+}
+.chart-key.line {
+  height: 2px;
+  width: 16px;
+  background: var(--accent);
+}
+.chart-key.muted {
+  height: 2px;
+  width: 16px;
+  background: var(--faint);
+}
+.chart-tip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: var(--marine);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 2px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.chart-tip-title {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue-champagne);
+  margin-bottom: 4px;
+}
+.chart-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-tip-row strong {
+  font-weight: 500;
+}
+.chart-tip-row span:last-child {
+  color: var(--blue-champagne);
+}
+.chart-tip .chart-key {
+  background: #fff;
+}
+.chart-tip .chart-key.outline {
+  background: none;
+  border-color: #fff;
+}
+.chart-tip .chart-key.muted {
+  background: var(--ash);
+}
+.multiples {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.multiple {
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--surface);
+  padding: 10px 12px 6px;
+  min-width: 0;
+}
+.multiple .chart-bar {
+  opacity: 0.55;
+}
+.multiple .chart-bar.emphasis {
+  opacity: 1;
+}
+@media (max-width: 720px) {
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .multiples {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .chip {
+    min-width: calc(50% - 4px);
+  }
+}

@@ -32,6 +32,11 @@ every push to `main` deploys.
 - **Overview preview**: the Overview shows the statement for any period (tiles, by category,
   sales tax, by month, by tag, receipt detail) without opening Reports; Reports adds vendors,
   category/tag filters and the exports.
+- **Trends** (Reports tab): comparison chips (previous period, same period last year, average
+  per month and run rate, largest category share, recoverable tax) and charts: monthly spend
+  over the trailing 12 months, this year vs last year by month, cumulative spend through the
+  year, and small multiples for the top categories, with hover tooltips and a month-by-month
+  table.
 - **Reports**: period picker (month, quarter, year, custom), totals, by category, by vendor, by
   month, sales-tax summary for input tax credits, and exports — **Statement PDF** (summary +
   receipt detail), **Summary PDF**, and **CSV** for the accountant.
